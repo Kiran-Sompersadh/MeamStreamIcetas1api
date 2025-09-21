@@ -3,9 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
-const { GridFsStorage } = require('multer-gridfs-storage');
 const { GridFSBucket } = require('mongodb');
-const path = require('path');
 const Meme = require('./models/Meme'); // your Meme model
 require('dotenv').config();
 
@@ -21,17 +19,11 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection failed:', err.message));
 
-// GridFS storage setup
-const storage = new GridFsStorage({
-  url: process.env.MONGO_URI,
-  file: (req, file) => ({
-    filename: `${Date.now()}-${file.originalname}`,
-    bucketName: 'memes'
-  })
-});
+// Multer memory storage
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// GridFSBucket (for serving files)
+// GridFSBucket (for uploads and serving)
 let gfsBucket;
 mongoose.connection.once('open', () => {
   gfsBucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'memes' });
@@ -48,21 +40,31 @@ app.post('/memes/upload', upload.single('image'), async (req, res) => {
 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // URL to access the image
-    const imageUrl = `${req.protocol}://${req.get('host')}/memes/file/${req.file.filename}`;
+    // Upload buffer to GridFS
+    const uploadStream = gfsBucket.openUploadStream(req.file.originalname);
+    uploadStream.end(req.file.buffer);
 
-    // Create Meme document
-    const meme = new Meme({
-      userId,
-      caption,
-      lat: parseFloat(lat),
-      lng: parseFloat(lng),
-      imageUrl,
-      timestamp: new Date()
+    uploadStream.on('finish', async () => {
+      const imageUrl = `/memes/file/${uploadStream.id}`;
+
+      // Save meme metadata
+      const meme = new Meme({
+        userId,
+        caption,
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+        imageUrl,
+        timestamp: new Date()
+      });
+
+      const saved = await meme.save();
+      res.status(201).json({ meme: saved, url: imageUrl });
     });
 
-    const saved = await meme.save();
-    res.status(201).json({ meme: saved, url: imageUrl });
+    uploadStream.on('error', (err) => {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    });
 
   } catch (err) {
     console.error(err);
@@ -71,14 +73,17 @@ app.post('/memes/upload', upload.single('image'), async (req, res) => {
 });
 
 // Serve uploaded images
-app.get('/memes/file/:filename', async (req, res) => {
+app.get('/memes/file/:id', async (req, res) => {
   try {
-    const file = await mongoose.connection.db.collection('memes.files')
-      .findOne({ filename: req.params.filename });
-    if (!file) return res.status(404).json({ error: 'File not found' });
+    const fileId = new mongoose.Types.ObjectId(req.params.id);
+    const downloadStream = gfsBucket.openDownloadStream(fileId);
 
-    const downloadStream = gfsBucket.openDownloadStreamByName(req.params.filename);
     downloadStream.pipe(res);
+
+    downloadStream.on('error', (err) => {
+      console.error(err);
+      res.status(404).json({ error: 'File not found' });
+    });
 
   } catch (err) {
     console.error(err);
