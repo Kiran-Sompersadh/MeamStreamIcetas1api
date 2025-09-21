@@ -1,5 +1,5 @@
 {
-  "name": "restfulapi1",
+  "name": "01-restfulapi",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -11,9 +11,10 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
+    "dotenv": "^17.2.2",
     "express": "^5.1.0",
-    "mongodb": "^6.18.0",
-    "mongoose": "^8.17.0"
+    "mongodb": "^6.20.0",
+    "mongoose": "^8.18.1",
+    "multer": "^2.0.2"
   }
 }
