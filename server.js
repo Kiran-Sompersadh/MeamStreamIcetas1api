@@ -38,37 +38,64 @@ app.post('/memes/upload', upload.single('image'), async (req, res) => {
   try {
     const { userId, caption, lat, lng } = req.body;
 
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!userId) {
+      console.error("❌ Missing userId in request body");
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+
+    if (!req.file) {
+      console.error("❌ No file uploaded");
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    console.log(`📥 Uploading meme for userId=${userId}, caption=${caption}`);
 
     // Upload buffer to GridFS
     const uploadStream = gfsBucket.openUploadStream(req.file.originalname);
     uploadStream.end(req.file.buffer);
 
     uploadStream.on('finish', async () => {
-      const imageUrl = `/memes/file/${uploadStream.id}`;
+      try {
+        const imageUrl = `/memes/file/${uploadStream.id}`;
 
-      // Save meme metadata
-      const meme = new Meme({
-        userId,
-        caption,
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        imageUrl,
-        timestamp: new Date()
-      });
+        // Save meme metadata in Mongo
+        const meme = new Meme({
+          userId,
+          caption,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          imageUrl,
+          timestamp: new Date()
+        });
 
-      const saved = await meme.save();
-      res.status(201).json({ meme: saved, url: imageUrl });
+        const saved = await meme.save();
+
+        console.log(`✅ Meme saved with id=${saved._id}`);
+
+        // ✅ Send a flat JSON response
+        res.status(201).json({
+          id: saved._id,
+          caption: saved.caption,
+          imageUrl: saved.imageUrl,
+          userId: saved.userId,
+          lat: saved.lat,
+          lng: saved.lng,
+          timestamp: saved.timestamp
+        });
+      } catch (dbErr) {
+        console.error("❌ Database save failed:", dbErr);
+        res.status(500).json({ error: 'Failed to save meme metadata' });
+      }
     });
 
     uploadStream.on('error', (err) => {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      console.error("❌ GridFS upload failed:", err);
+      res.status(500).json({ error: 'Failed to upload image' });
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Unexpected server error:", err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
