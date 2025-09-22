@@ -66,7 +66,7 @@ app.post('/memes/upload', upload.single('image'), async (req, res) => {
 
     const saved = await meme.save();
 
-    res.status(201).json({ meme: saved, url: imageUrl });
+    res.status(201).json(saved);
 
   } catch (err) {
     console.error('❌ Upload failed:', err);
