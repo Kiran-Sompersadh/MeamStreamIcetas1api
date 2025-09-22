@@ -1,48 +1,50 @@
+// Import the Express framework
 const express = require('express');
+
+// Create a new router instance
 const router = express.Router();
+
+// Import the Meme model we defined in Meme.js
 const Meme = require('../models/Meme');
 
-// Helper function to format meme objects consistently
-function formatMeme(memeDoc) {
-  return {
-    id: memeDoc._id,
-    caption: memeDoc.caption,
-    imageUrl: memeDoc.imageUrl,
-    userId: memeDoc.userId,
-    lat: memeDoc.lat,
-    lng: memeDoc.lng,
-    timestamp: memeDoc.timestamp
-  };
-}
 
 // GET /memes
-// Fetch all memes, or filter by userId if provided
+// This endpoint fetches all memes from the database.
+// If a `userId` is provided in the query string, it filters by that user.
 router.get('/', async (req, res) => {
   try {
-    const query = req.query.userId ? { userId: req.query.userId } : {};
-    const memes = await Meme.find(query).sort({ timestamp: -1 }); // newest first
+    const memes = req.query.userId
+      ? await Meme.find({ userId: req.query.userId }) // Get memes by user
+      : await Meme.find();                            // Get all memes
 
-    // ✅ Format all memes to match what upload route sends
-    res.json(memes.map(formatMeme));
+    // Return the memes as JSON
+    res.json(memes);
   } catch (err) {
-    console.error("❌ Failed to fetch memes:", err);
-    res.status(500).json({ error: 'Failed to fetch memes' });
+    // Return error response if something goes wrong
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 // POST /memes
-// Create a meme manually (useful if you want to send JSON-only data)
+// This endpoint allows a client (like your Android app) to upload a new meme.
+// It expects a JSON body with userId, imageUrl, caption, lat, lng, timestamp.
 router.post('/', async (req, res) => {
   try {
+    // Create a new Meme document using the request body
     const meme = new Meme(req.body);
+
+    // Save the meme to the database
     const saved = await meme.save();
 
-    // ✅ Return flat JSON
-    res.status(201).json(formatMeme(saved));
+    // Return the newly created meme with status 201 (Created)
+    res.status(201).json(saved);
   } catch (err) {
-    console.error("❌ Failed to save meme:", err);
-    res.status(400).json({ error: 'Invalid data' });
+    // Return validation or input errors
+    res.status(400).json({ error: err.message });
   }
 });
 
+
+// Export this router so it can be used in server.js
 module.exports = router;
